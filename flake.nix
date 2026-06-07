@@ -6,12 +6,50 @@
 
   outputs =
     {
+      self,
       nixpkgs,
       disko,
       nixos-facter-modules,
       ...
     }:
+    let
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
+      forAllSystems = nixpkgs.lib.genAttrs systems;
+    in
     {
+      packages = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          generate-network-facts = pkgs.writeShellApplication {
+            name = "generate-network-facts";
+            runtimeInputs = [
+              pkgs.coreutils
+              pkgs.gawk
+              pkgs.git
+              pkgs.gnused
+              pkgs.jq
+              pkgs.openssh
+            ];
+            text = builtins.readFile ./scripts/generate-network-facts.sh;
+          };
+        }
+      );
+
+      apps = forAllSystems (system: {
+        generate-network-facts = {
+          type = "app";
+          program = "${self.packages.${system}.generate-network-facts}/bin/generate-network-facts";
+        };
+      });
+
+      nixosModules.static-network-from-facts = ./modules/static-network-from-facts.nix;
+
       nixosConfigurations.hetzner-cloud = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
@@ -34,6 +72,16 @@
         modules = [
           disko.nixosModules.disko
           ./configuration.nix
+        ];
+      };
+
+      nixosConfigurations.contabo = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          disko.nixosModules.disko
+          ./configuration.nix
+          ./hardware-configuration.nix
+          ./contabo.nix
         ];
       };
 
